@@ -1,4 +1,4 @@
-﻿namespace JsPack.Core
+﻿namespace JsPack
 {
     public class JsIdentifierAlias
     {

@@ -1,4 +1,4 @@
-﻿namespace JsPack.Core
+﻿namespace JsPack
 {
     public enum JsTokenType
     {
@@ -7,7 +7,7 @@
         Identifier,
         Number,
         Comment,
-        Puntuacator,
+        Punctuation,
         Keyword
     }
 

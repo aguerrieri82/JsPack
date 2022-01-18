@@ -1,4 +1,4 @@
-﻿namespace JsPack.Core
+﻿namespace JsPack
 {
     public enum JsElementType
     {
@@ -9,6 +9,13 @@
 
     public abstract class JsElement
     {
+        public JsElement()
+        {
+            Tokens = new List<JsToken>();
+        }
+
         public abstract JsElementType Type { get; }
+
+        public IList<JsToken> Tokens { get; }
     }
 }

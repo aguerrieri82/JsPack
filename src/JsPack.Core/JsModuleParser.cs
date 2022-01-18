@@ -1,11 +1,10 @@
-﻿using JsPack.Core.Services;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JsPack.Core
+namespace JsPack
 {
     public enum ExpandReferenceMode
     {
@@ -16,7 +15,7 @@ namespace JsPack.Core
 
     public class JsModuleParser
     {
-        static readonly string PUNTUACTORS = "*/+=?%><!-[]{}();&|^.,:";
+        static readonly string PUNTUACTORS = "*/+=?%><!-[]{}();&|^.,:\\";
 
         static readonly string[] KEYWORDS = new[] { "as", "from", "abstract", "arguments", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "debugger", "default", "delete", "do", "double", "else", "enum", "eval", "export", "extends", "false", "final", "finally", "float", "for", "function", "goto", "if", "implements", "import", "in", "instanceof", "int", "interface", "let", "long", "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "typeof", "var", "void", "volatile", "while", "with", "yield" };
 
@@ -96,7 +95,6 @@ namespace JsPack.Core
                     FindDependances(import.FromModule, result, processed, false, mode);
             }
         }
-
 
         public JsParsedModule Resolve(JsModule context, string module)
         {
@@ -406,6 +404,9 @@ namespace JsPack.Core
                     if (!enumertaor.MoveNext())
                         yield break;
                     token = enumertaor.Current;
+
+                    if (curElement != null && state != 100)
+                        curElement.Tokens.Add(token);
                 }
                 advance = true;
                 switch (state)
@@ -419,11 +420,13 @@ namespace JsPack.Core
                                 {
                                     Items = new List<JsIdentifierAlias>()
                                 };
+                                curElement.Tokens.Add(token);
                                 state = 1;
                             }
                             else if (token.Text == "import")
                             {
                                 curElement = new JsImportElement();
+                                curElement.Tokens.Add(token);
                                 state = 10;
                             }
                         }
@@ -433,7 +436,7 @@ namespace JsPack.Core
                             {
                                 Parts = new List<string>(new[] { token.Text })
                             };
-
+                            curElement.Tokens.Add(token);
                             state = 30;
                         }
                         break;
@@ -458,16 +461,7 @@ namespace JsPack.Core
                         }
 
                         break;
-                    case 2:
-                        if (token.Type == JsTokenType.Identifier)
-                        {
-                            (curElement as JsExportElement).ExportName = token.Text;
-                            yield return curElement;
-                            curElement = null;
-                        }
-                        else
-                            InvalidSyntax();
-                        break;
+        
                     case 3:
                         if (token.Text == "as")
                             state = 43;
@@ -492,9 +486,7 @@ namespace JsPack.Core
                         else if (token.Type == JsTokenType.String)
                         {
                             (curElement as JsImportElement).FromModule = token.Text;
-                            yield return curElement;
-                            curElement = null;
-                            state = 0;
+                            state = 100;
                         }
                         break;
                     case 11:
@@ -545,9 +537,7 @@ namespace JsPack.Core
                         break;
                     case 16:
                         (curElement as JsImportElement).FromModule = token.Text;
-                        yield return curElement;
-                        curElement = null;
-                        state = 0;
+                        state = 100;
                         break;
                     case 17:
                         if (token.Text == ",")
@@ -634,9 +624,7 @@ namespace JsPack.Core
                         if (token.Type == JsTokenType.Identifier)
                         {
                             (curElement as JsExportElement).ExportName = token.Text;
-                            yield return curElement;
-                            curElement = null;
-                            state = 0;
+                            state = 100;
                         }
                         else
                             InvalidSyntax();
@@ -649,9 +637,7 @@ namespace JsPack.Core
                                 (curElement as JsExportElement).ExportName = (curElement as JsExportElement).Items[0].Identifier;
                                 (curElement as JsExportElement).Items.Clear();                            
                             }
-                            yield return curElement;
-                            curElement = null;
-                            state = 0;
+                            state = 100;
                         }
                         else if (token.Type == JsTokenType.Identifier)
                             (curElement as JsExportElement).Items.Add(new JsIdentifierAlias() { Identifier = token.Text });
@@ -689,9 +675,7 @@ namespace JsPack.Core
                     case 36:
                         if (token.Type == JsTokenType.Identifier)
                             (curElement as JsExportElement).ExportName = token.Text;
-                        yield return curElement;
-                        curElement = null;
-                        state = 0;
+                        state = 100;
                         break;
 
                     case 37:
@@ -724,9 +708,7 @@ namespace JsPack.Core
                             state = 40;
                         else
                         {
-                            yield return curElement;
-                            curElement = null;
-                            state = 0;
+                            state = 100;
                             advance = false;
                         }
                         break;
@@ -734,9 +716,7 @@ namespace JsPack.Core
                         if (token.Type == JsTokenType.String)
                         {
                             (curElement as JsExportElement).FromModule = token.Text;
-                            yield return curElement;
-                            curElement = null;
-                            state = 0;
+                            state = 100;
                         }
                         else
                             InvalidSyntax();
@@ -750,9 +730,7 @@ namespace JsPack.Core
                             if (!(curElement as JsExportElement).IsDefault)
                                 InvalidSyntax();
                         }
-                        yield return curElement;
-                        curElement = null;
-                        state = 0;
+                        state = 100;
                         break;
                     case 42:
                         if (token.Type == JsTokenType.Identifier || (token.Type == JsTokenType.Keyword && token.Text == "default"))
@@ -771,7 +749,18 @@ namespace JsPack.Core
                         else
                             InvalidSyntax();
                         break;
+                    case 100:
+                        if (token.Text == ";")
+                            curElement.Tokens.Add(token);
+                        else
+                            advance = false;
+                        yield return curElement;
+                        curElement = null;
+                        state = 0;
+                        break;
                 }
+
+
             }
 
         }
@@ -875,11 +864,11 @@ namespace JsPack.Core
                         {
                             state = 9;
                             curText.Append(c);
-                            curToken = CreateToken(JsTokenType.Puntuacator);
+                            curToken = CreateToken(JsTokenType.Punctuation);
                         }
                         /*
                         else
-                            throw new Exception(String.Format("Unspected char '{0}' at {1}", c, ofs));*/
+                            throw new Exception(string.Format("Unspected char '{0}' at {1}", c, ofs));*/
                         break;
                     case 1:
                         if (c == '\\')
@@ -996,7 +985,7 @@ namespace JsPack.Core
                             state = 12;
                         else
                         {
-                            curToken = CreateToken(JsTokenType.Puntuacator);
+                            curToken = CreateToken(JsTokenType.Punctuation);
                             curToken.Text = "/";
                             yield return curToken;
                             curText.Clear();

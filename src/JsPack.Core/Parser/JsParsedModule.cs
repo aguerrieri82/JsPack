@@ -1,4 +1,4 @@
-﻿namespace JsPack.Core
+﻿namespace JsPack
 {
     [Flags]
     public enum JsParsedModuleFlags

@@ -4,13 +4,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JsPack.Core
+namespace JsPack
 {
     public class JsModuleResolveContext
     {
         public string Root { get; set; }
     } 
-
 
     public interface IJsModuleResolver
     {

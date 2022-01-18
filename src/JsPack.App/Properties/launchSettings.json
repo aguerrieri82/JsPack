@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "JsPack.App": {
+      "commandName": "Project",
+      "commandLineArgs": "expand \"D:\\Development\\Personal\\Git\\DataLab\\src\\DataLab.Web\\obj\\js\\DataLab\\src\\DataLab.Web\\Scripts\\index.js\" \"D:\\Development\\Personal\\Git\\DataLab\\src\\DataLab.Web\\obj\\js\\DataLab\\src\\DataLab.Web\\Scripts\\webapp.js\""
+    }
+  }
+}

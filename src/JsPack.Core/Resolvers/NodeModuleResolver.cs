@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JsPack.Core
+namespace JsPack
 {
     public class NodePackage
     {

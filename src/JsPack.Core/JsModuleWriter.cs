@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JsPack.Core
+namespace JsPack
 {
     public class JsModuleWriter
     {
@@ -46,7 +46,7 @@ namespace JsPack.Core
                     {
                         var item = element.Items[i];
                         if (i > 0)
-                            Write(",");
+                            Write(", ");
                         Write(item.Identifier);
                         if (item.Alias != null)
                             Write(" as ").Write(item.Alias);
