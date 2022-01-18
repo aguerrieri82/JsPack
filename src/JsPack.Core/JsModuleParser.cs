@@ -7,6 +7,13 @@ using System.Threading.Tasks;
 
 namespace JsPack.Core
 {
+    public enum ExpandReferenceMode
+    {
+        No,
+        ExternalModule,
+        All
+    }
+
     public class JsModuleParser
     {
         static readonly string PUNTUACTORS = "*/+=?%><!-[]{}();&|^.,:";
@@ -21,30 +28,30 @@ namespace JsPack.Core
             ModuleResolver = new MultiModuleResolver();
         }
 
-        public IEnumerable<JsModuleDependance> FindDependances(JsParsedModule module)
+        public IEnumerable<JsModuleDependance> FindDependances(JsParsedModule module, ExpandReferenceMode mode = ExpandReferenceMode.ExternalModule)
         {
-            return FindDependances(new[] { module });
+            return FindDependances(new[] { module }, mode);
         }
 
-        public IEnumerable<JsModuleDependance> FindDependances(IEnumerable<JsParsedModule> modules)
+        public IEnumerable<JsModuleDependance> FindDependances(IEnumerable<JsParsedModule> modules, ExpandReferenceMode mode = ExpandReferenceMode.ExternalModule)
         {
             var result = new Dictionary<string, JsModuleDependance>();
             var processed = new HashSet<JsParsedModule>();
             foreach (var module in modules)
-                FindDependances(module, result, processed, true);
+                FindDependances(module, result, processed, true, mode);
             return result.Values;
         }
 
-        protected void FindDependances(JsParsedModule module, IDictionary<string, JsModuleDependance> result, HashSet<JsParsedModule> processed, bool includeExports)
+        protected void FindDependances(JsParsedModule module, IDictionary<string, JsModuleDependance> result, HashSet<JsParsedModule> processed, bool includeExports, ExpandReferenceMode mode)
         {
-            if (processed.Contains(module))
+            if (processed.Contains(module) || (module.Flags & JsParsedModuleFlags.Invalid) != 0)
                 return;
 
             processed.Add(module);
 
             ResolveReferences(module);
 
-            var items = module.Imports.Values.Union(module.ModuleImports);
+            IEnumerable<JsReference> items = module.Imports.Values.Union(module.ModuleImports);
             if (includeExports)
                 items = items.Union(module.Exports.Values);
 
@@ -52,8 +59,20 @@ namespace JsPack.Core
             {
                 var curImport = import;
 
-                while (curImport.FromModule != null && (curImport.Flags & JsReferenceFlags.Internal) == 0 && curImport.ResolveStatus == JsReferenceStatus.Success && curImport.FromModuleName == null && curImport.Name != "*")
-                    curImport = curImport.FromModule.Exports[curImport.Name];
+                if (mode != ExpandReferenceMode.No)
+                {
+                    while (curImport.FromModule != null && 
+                          (curImport.Flags & JsReferenceFlags.Internal) == 0 && 
+                          curImport.ResolveStatus == JsReferenceStatus.Success &&
+                          curImport.Name != "*")
+                    {
+                        
+                        if (mode == ExpandReferenceMode.ExternalModule && curImport.FromModuleName != null)
+                            break;
+
+                        curImport = curImport.FromModule.Exports[curImport.Name];
+                    }
+                }
 
                 if (curImport.FromModule == null)
                     continue;
@@ -74,7 +93,7 @@ namespace JsPack.Core
                     imporDep.Exports[curImport.Name] = curImport;
 
                 if (import.FromModule != null)
-                    FindDependances(import.FromModule, result, processed, false);
+                    FindDependances(import.FromModule, result, processed, false, mode);
             }
         }
 
@@ -120,7 +139,8 @@ namespace JsPack.Core
 
         public void ResolveReferences(JsParsedModule module)
         {
-            if ((module.Flags & JsParsedModuleFlags.Resolving) != 0)
+            if ((module.Flags & JsParsedModuleFlags.Resolving) != 0 || 
+                (module.Flags & JsParsedModuleFlags.Invalid) != 0)
                 return;
 
             module.Flags |= JsParsedModuleFlags.Resolving;
@@ -315,6 +335,17 @@ namespace JsPack.Core
 
         public JsParsedModule Parse(string path, bool resolveRefs = false)
         {
+            if (Path.GetExtension(path) != ".js")
+            {
+                return new JsParsedModule()
+                {
+                    Path = path,
+                    ParseTime = DateTime.Now,
+                    Flags = JsParsedModuleFlags.Invalid
+                };
+
+            }
+
             path = Path.GetFullPath(path);
 
             using var reader = new StreamReader(path);

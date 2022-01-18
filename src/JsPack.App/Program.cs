@@ -9,20 +9,34 @@ var path = @"D:\Development\Personal\Git\DataLab\src\DataLab.Web\obj\js\DataLab\
 
 var modules = parser.Parse(path + "index.js");
 
-var deps = parser.FindDependances(modules).ToArray();
+var deps = parser.FindDependances(modules, ExpandReferenceMode.ExternalModule).ToArray();
 
 var jsWriter = new JsModuleWriter();
 
 foreach (var dep in deps)
 {
     string moduleName;
+
+    bool isPath = false;
+
     if (dep.Module.Name != null)
+    {
         moduleName = dep.Module.Name;
+        if (moduleName.StartsWith("."))
+            isPath = true;
+    }
     else
+    {
+        isPath = true;
+        moduleName = dep.Module.Path;
+    }
+
+    if (isPath)
     {
         moduleName = Path.GetRelativePath(path, dep.Module.Path);
         if (!moduleName.StartsWith("."))
             moduleName = "./" + moduleName;
+
         var extIndex = moduleName.LastIndexOf('.');
         if (extIndex != -1)
             moduleName = moduleName.Substring(0, extIndex);

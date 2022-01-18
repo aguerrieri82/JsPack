@@ -6,7 +6,8 @@
         Parsed = 0x0,
         Exports = 0x1,
         Imports = 0x2,
-        Resolving = 04
+        Resolving = 0x4,
+        Invalid = 0x8
     }
 
     public class JsParsedModule : JsModule

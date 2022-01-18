@@ -36,36 +36,97 @@ namespace JsPack.Core
         {
         }
 
+        public string FindCommonPath(IEnumerable<string> paths)
+        {
+            var pathParts = paths.Select(a => Path.GetFullPath(a).Split('\\').ToArray()).ToArray();
+            string commonPath = "";
+            var curI = 0;
+            bool isOver = false;
+            while (!isOver)
+            {
+                foreach (var pathPart in pathParts)
+                {
+                    if (curI >= pathPart.Length || pathParts[0][curI] != pathPart[curI])
+                    {
+                        isOver = true;
+                        break;
+                    }
+                }
+                if (!isOver)
+                    commonPath = Path.Combine(commonPath, pathParts[0][curI]);
+                curI++;
+            }
+            return commonPath;
+        }
+
         public override JsModule Resolve(JsModuleResolveContext context, string module)
         {
             var config = FindConfig(context.Root);
+
             if (config == null)
                 return null;
-            if (config.Value.CompilerOptions?.Paths != null && config.Value.CompilerOptions.Paths.TryGetValue(module, out var paths))
+            
+            var moduleName = module.Split('/')[0];
+
+            if (config.Value.CompilerOptions?.Paths == null)
+                return null;
+
+            if (!config.Value.CompilerOptions.Paths.TryGetValue(moduleName, out var paths))
+                return null;
+
+            string commonPath = null;
+            string outRoot = null;
+            //string contextOutRoot = null;
+
+            if (config.Value.CompilerOptions?.OutDir != null)
             {
-                foreach (var path in paths)
+                var pathList = config.Value.CompilerOptions.Paths.SelectMany(a => a.Value).Union(new[] { config.Path });
+                commonPath = FindCommonPath(pathList);
+                outRoot = Path.Combine(config.Path, Path.Combine(config.Value.CompilerOptions.OutDir));
+                //contextOutRoot = Path.GetFullPath(Path.Combine(outRoot, Path.GetRelativePath(commonPath, config.Path)));
+            }
+
+            foreach (var path in paths)
+            {
+                if (!(path.EndsWith("/") || path.EndsWith("\\")))
+                    continue;
+
+                string entry;
+
+                if (commonPath != null)
                 {
-                    if (path.EndsWith("/") || path.EndsWith("\\"))
+                    var moduleRoot = Path.Combine(config.Path, path);
+                    moduleRoot = Path.GetRelativePath(commonPath, moduleRoot);
+                    moduleRoot = Path.GetFullPath(Path.Combine(outRoot, moduleRoot));
+                    entry = Path.Combine(moduleRoot, "index.js");
+                }
+                else
+                    entry = Path.Combine(Path.Combine(config.Path, path), "index.js");
+
+                if (!File.Exists(entry))
+                {
+                    var refConfig = FindConfig(Path.Combine(config.Path, path));
+
+                    if (!module.StartsWith("."))
                     {
-                        var entry = Path.Combine(Path.Combine(config.Path, path), "index.js");
+                        entry = Path.Combine(config.Path, path) + module.Substring(moduleName.Length);
                         if (!File.Exists(entry))
-                        {
-                            var refConfig = FindConfig(Path.Combine(config.Path, path));
-                           
-                            if (refConfig?.Value.CompilerOptions?.OutDir != null)
-                            {
-                                entry = Path.Combine(Path.Combine(refConfig.Path, refConfig.Value.CompilerOptions.OutDir), "index.js");
-                                if (!File.Exists(entry))
-                                    return null;
-                            }
-                        }
-                        return new JsModule()
-                        {
-                            Name = module,
-                            Path = entry,
-                        };
+                            return null;
+                    }
+                    else if (refConfig?.Value.CompilerOptions?.OutDir != null)
+                    {
+                        entry = Path.Combine(Path.Combine(refConfig.Path, refConfig.Value.CompilerOptions.OutDir), "index.js");
+                        if (!File.Exists(entry))
+                            return null;
                     }
                 }
+                entry = Path.GetFullPath(entry);
+
+                return new JsModule()
+                {
+                    Name = module,
+                    Path = entry,
+                };
             }
             return null;
         }
