@@ -6,15 +6,15 @@ using System.Threading.Tasks;
 
 namespace JsPack.Core
 {
-    public class ModuleResolveContext
+    public class JsModuleResolveContext
     {
         public string Root { get; set; }
     } 
 
 
-    public interface IModuleResolver
+    public interface IJsModuleResolver
     {
-        JsModule Resolve(ModuleResolveContext context, string module);
+        JsModule Resolve(JsModuleResolveContext context, string module);
 
         int Priority { get; set; }
     }

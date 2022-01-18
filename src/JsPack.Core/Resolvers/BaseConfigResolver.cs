@@ -17,7 +17,7 @@ namespace JsPack.Core
         public DateTime ParseTime { get; set; }
     }
 
-    public abstract class BaseConfigResolver<TConfig> : IModuleResolver
+    public abstract class BaseConfigResolver<TConfig> : IJsModuleResolver
     {
         readonly string _fileName;
         IDictionary<string, ConfigRef<TConfig>> _pathCache;
@@ -82,7 +82,7 @@ namespace JsPack.Core
             return result;
         }
 
-        public abstract JsModule Resolve(ModuleResolveContext context, string module);
+        public abstract JsModule Resolve(JsModuleResolveContext context, string module);
 
         public int Priority { get; set; }
     }

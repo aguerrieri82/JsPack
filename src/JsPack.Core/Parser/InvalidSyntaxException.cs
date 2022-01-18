@@ -8,12 +8,12 @@ namespace JsPack.Core
 {
     public class InvalidSyntaxException : Exception
     {
-        public InvalidSyntaxException(Token token, string message = "")
+        public InvalidSyntaxException(JsToken token, string message = "")
             : base("Syntax error: " + message)
         {
             Token = token;
         }
 
-        public Token Token { get;}
+        public JsToken Token { get;}
     }
 }

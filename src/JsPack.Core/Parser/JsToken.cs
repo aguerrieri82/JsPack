@@ -1,6 +1,6 @@
 ﻿namespace JsPack.Core
 {
-    public enum TokenType
+    public enum JsTokenType
     {
         Whitespace,
         String,
@@ -11,7 +11,7 @@
         Keyword
     }
 
-    public class Token
+    public class JsToken
     {
         public string? Text { get; set; }
 
@@ -21,7 +21,7 @@
 
         public int Column { get; set; }
 
-        public TokenType Type { get; set; }
+        public JsTokenType Type { get; set; }
 
         public override string ToString()
         {

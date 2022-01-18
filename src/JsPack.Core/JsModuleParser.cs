@@ -21,9 +21,67 @@ namespace JsPack.Core
             ModuleResolver = new MultiModuleResolver();
         }
 
+        public IEnumerable<JsModuleDependance> FindDependances(JsParsedModule module)
+        {
+            return FindDependances(new[] { module });
+        }
+
+        public IEnumerable<JsModuleDependance> FindDependances(IEnumerable<JsParsedModule> modules)
+        {
+            var result = new Dictionary<string, JsModuleDependance>();
+            var processed = new HashSet<JsParsedModule>();
+            foreach (var module in modules)
+                FindDependances(module, result, processed, true);
+            return result.Values;
+        }
+
+        protected void FindDependances(JsParsedModule module, IDictionary<string, JsModuleDependance> result, HashSet<JsParsedModule> processed, bool includeExports)
+        {
+            if (processed.Contains(module))
+                return;
+
+            processed.Add(module);
+
+            ResolveReferences(module);
+
+            var items = module.Imports.Values.Union(module.ModuleImports);
+            if (includeExports)
+                items = items.Union(module.Exports.Values);
+
+            foreach (var import in items)
+            {
+                var curImport = import;
+
+                while (curImport.FromModule != null && (curImport.Flags & JsReferenceFlags.Internal) == 0 && curImport.ResolveStatus == JsReferenceStatus.Success && curImport.FromModuleName == null && curImport.Name != "*")
+                    curImport = curImport.FromModule.Exports[curImport.Name];
+
+                if (curImport.FromModule == null)
+                    continue;
+
+                var impModuleName = curImport.FromModule == null ? curImport.FromModuleName : curImport.FromModule.Path;
+
+                if (!result.TryGetValue(impModuleName, out var imporDep))
+                {
+                    imporDep = new JsModuleDependance()
+                    {
+                        Module = curImport.FromModule,
+                        Exports = new Dictionary<string, JsReference>()
+                    };
+                    result[impModuleName] = imporDep;
+                }
+
+                if (curImport.Name != null && curImport.Name != "*")
+                    imporDep.Exports[curImport.Name] = curImport;
+
+                if (import.FromModule != null)
+                    FindDependances(import.FromModule, result, processed, false);
+            }
+        }
+
+
         public JsParsedModule Resolve(JsModule context, string module)
         {
-            var resModule = ModuleResolver.Resolve(new ModuleResolveContext()
+            var resModule = ModuleResolver.Resolve(new JsModuleResolveContext()
             {
                 Root = Path.GetDirectoryName(context.Path)
             }, module);
@@ -41,7 +99,9 @@ namespace JsPack.Core
             }
 
             parsedModule = Parse(resModule.Path);
-  
+            parsedModule.Name = resModule.Name;
+
+
             return parsedModule;
         }
 
@@ -65,56 +125,111 @@ namespace JsPack.Core
 
             module.Flags |= JsParsedModuleFlags.Resolving;
 
-            if ((module.Flags & JsParsedModuleFlags.Imports) == 0)
-            {
-                module.Imports = new Dictionary<string, JsReference>();
-
-                foreach (var import in module.Elements.OfType<ImportElement>())
-                {
-                    foreach (var importRef in ResolveImport(module, import))
-                        module.Imports[importRef.Alias] = importRef;
-                }
-
-                module.Flags |= JsParsedModuleFlags.Imports;
-            }
-
             if ((module.Flags & JsParsedModuleFlags.Exports) == 0)
             {
                 module.Exports = new Dictionary<string, JsReference>();
 
-                foreach (var export in module.Elements.OfType<ExportElement>())
+                foreach (var export in module.Elements.OfType<JsExportElement>())
                 {
                     foreach (var exportRef in ResolveExport(module, export))
                         module.Exports[exportRef.Alias] = exportRef;
                 }
 
                 module.Flags |= JsParsedModuleFlags.Exports;
+            }
 
+            if ((module.Flags & JsParsedModuleFlags.Imports) == 0)
+            {
+                module.Imports = new Dictionary<string, JsReference>();
+                module.ModuleImports = new List<JsReference>();
+
+                foreach (var import in module.Elements.OfType<JsImportElement>())
+                {
+                    foreach (var importRef in ResolveImport(module, import))
+                    {
+                        if (importRef.Alias != null)
+                            module.Imports[importRef.Alias] = importRef;
+                        else
+                            module.ModuleImports.Add(importRef);
+                    }
+                }
+
+                module.Flags |= JsParsedModuleFlags.Imports;
             }
 
             module.Flags ^= JsParsedModuleFlags.Resolving;
         }
 
-        public IEnumerable<JsReference> ResolveImport(JsParsedModule module, ImportElement import)
+        public IEnumerable<JsReference> ResolveImport(JsParsedModule module, JsImportElement import)
         {
             var impModule = Resolve(module, import.FromModule);
 
             if (impModule == null)
+            {
+                yield return new JsReference()
+                {
+                    FromModuleName = import.FromModule,
+                    ResolveStatus = JsReferenceStatus.Error
+                };
                 yield break;
-
+            }
+              
             ResolveReferences(impModule);
 
-            if (import.AllAlias != null)
+            if (import.AllAlias != null  || ((import.Items == null || import.Items.Count == 0) && import.DefaultAlias == null))
             {
-     
+                yield return new JsReference()
+                {
+                    FromModule = impModule,
+                    FromModuleName = impModule.Name,
+                    Alias = import.AllAlias,
+                    Name = "*",
+                    ResolveStatus = JsReferenceStatus.Success
+                };
+            }
+            if (import.DefaultAlias != null)
+            {
+                var isFound = impModule.Exports.TryGetValue("default", out var defExpRef);
+
+                yield return new JsReference()
+                {
+                    FromModule = impModule,
+                    FromModuleName = impModule.Name,
+                    Alias = import.DefaultAlias,
+                    Name = "default",
+                    ResolveStatus = isFound ? defExpRef.ResolveStatus : JsReferenceStatus.Error
+                };
+
+                if (!isFound)
+                    Console.WriteLine("Default import referencefrom module {1} not found", impModule.Name);
+            }
+            if (import.Items != null)
+            {
+                foreach (var item in import.Items)
+                {
+                    var isFound = impModule.Exports.TryGetValue(item.Identifier, out var impRef);
+
+                    yield return new JsReference()
+                    {
+                        FromModule = impModule,
+                        FromModuleName = impModule.Name,
+                        Alias = item.Alias ?? item.Identifier,
+                        Name = item.Identifier,
+                        ResolveStatus = isFound ? impRef.ResolveStatus : JsReferenceStatus.Error
+                    };
+
+                    if (!isFound)
+                        Console.WriteLine("Import reference {0} from module {1} not found", item.Identifier, impModule.Name);
+                }
             }
         }
 
-        public IEnumerable<JsReference> ResolveExport(JsParsedModule module, ExportElement export)
+        public IEnumerable<JsReference> ResolveExport(JsParsedModule module, JsExportElement export)
         {
             if (export.FromModule != null)
             {
                 var impModule = Resolve(module, export.FromModule);
+
                 if (impModule == null)
                     yield break;
 
@@ -135,8 +250,17 @@ namespace JsPack.Core
                     }
                     else
                     {
-                        foreach (var item in impModule.Exports)
-                            yield return item.Value;
+                        foreach (var item in impModule.Exports.Values)
+                        {
+                            yield return new JsReference()
+                            {
+                                FromModule = impModule,
+                                FromModuleName = impModule.Name,
+                                Alias = item.Alias,
+                                Name = item.Alias ,
+                                ResolveStatus = item.ResolveStatus
+                            };
+                        }
                     }
                 }
                 else
@@ -150,7 +274,7 @@ namespace JsPack.Core
                             FromModuleName = impModule.Name,
                             Alias = item.Alias ?? item.Identifier,
                             Name = item.Identifier,
-                            ResolveStatus = isFound ? JsReferenceStatus.Success : JsReferenceStatus.Error
+                            ResolveStatus = isFound ? exportRef.ResolveStatus : JsReferenceStatus.Error
                         };
 
                         if (!isFound)
@@ -166,22 +290,24 @@ namespace JsPack.Core
                     {
                         yield return new JsReference()
                         {
-                            FromModule = module,
-                            FromModuleName = module.Name,
                             Alias = item.Alias ?? item.Identifier,
                             Name = item.Identifier,
-                            ResolveStatus = JsReferenceStatus.Success
+                            ResolveStatus = JsReferenceStatus.Success,
+                            FromModule = module,
+                            FromModuleName = module.Name,
+                            Flags = JsReferenceFlags.Internal
                         };
                     }
                 }
                 if (export.ExportName != null || export.IsDefault) {
                     yield return new JsReference()
                     {
-                        FromModule = module,
-                        FromModuleName = module.Name,
                         Alias = export.IsDefault ? "default" : export.ExportName,
                         Name = export.ExportName,
-                        ResolveStatus = JsReferenceStatus.Success
+                        ResolveStatus = JsReferenceStatus.Success,
+                        FromModule = module,
+                        FromModuleName = module.Name,
+                        Flags = JsReferenceFlags.Internal
                     };
                 }
             }
@@ -195,7 +321,6 @@ namespace JsPack.Core
 
             var result = new JsParsedModule()
             {
-                Name = Path.GetFileNameWithoutExtension(path),
                 Path = path,
                 Elements = Parse(Tokenize(reader)).ToArray(),
                 ParseTime = DateTime.Now,
@@ -222,12 +347,12 @@ namespace JsPack.Core
             }
         }
 
-        public IEnumerable<JsElement> Parse(IEnumerable<Token> tokens, Action<InvalidSyntaxException> errorHandler = null)
+        public IEnumerable<JsElement> Parse(IEnumerable<JsToken> tokens, Action<InvalidSyntaxException> errorHandler = null)
         {
             var state = 0;
             JsElement curElement = null;
-            var enumertaor = tokens.Where(a => a.Type != TokenType.Whitespace && a.Type != TokenType.Comment).GetEnumerator();
-            Token token = null;
+            var enumertaor = tokens.Where(a => a.Type != JsTokenType.Whitespace && a.Type != JsTokenType.Comment).GetEnumerator();
+            JsToken token = null;
             var advance = true;
 
             var InvalidSyntax = () =>
@@ -255,25 +380,25 @@ namespace JsPack.Core
                 switch (state)
                 {
                     case 0:
-                        if (token.Type == TokenType.Keyword)
+                        if (token.Type == JsTokenType.Keyword)
                         {
                             if (token.Text == "export")
                             {
-                                curElement = new ExportElement()
+                                curElement = new JsExportElement()
                                 {
-                                    Items = new List<IdentifierAlias>()
+                                    Items = new List<JsIdentifierAlias>()
                                 };
                                 state = 1;
                             }
                             else if (token.Text == "import")
                             {
-                                curElement = new ImportElement();
+                                curElement = new JsImportElement();
                                 state = 10;
                             }
                         }
-                        else if (token.Type == TokenType.Identifier)
+                        else if (token.Type == JsTokenType.Identifier)
                         {
-                            curElement = new IdentifierElement()
+                            curElement = new JsIdentifierExpression()
                             {
                                 Parts = new List<string>(new[] { token.Text })
                             };
@@ -290,11 +415,11 @@ namespace JsPack.Core
                             state = 1;
                         else if (token.Text == "default")
                         {
-                            (curElement as ExportElement).IsDefault = true;
+                            (curElement as JsExportElement).IsDefault = true;
                         }
                         else
                         {
-                            (curElement as ExportElement).ExportType = token.Text;
+                            (curElement as JsExportElement).ExportType = token.Text;
                             if (token.Text == "var" || token.Text == "const" || token.Text == "let")
                                 state = 20;
                             else
@@ -303,9 +428,9 @@ namespace JsPack.Core
 
                         break;
                     case 2:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).ExportName = token.Text;
+                            (curElement as JsExportElement).ExportName = token.Text;
                             yield return curElement;
                             curElement = null;
                         }
@@ -326,23 +451,23 @@ namespace JsPack.Core
                         else if (token.Text == "{")
                         {
                             state = 12;
-                            (curElement as ImportElement).Items = new List<IdentifierAlias>();
+                            (curElement as JsImportElement).Items = new List<JsIdentifierAlias>();
                         }
-                        else if (token.Type == TokenType.Identifier)
+                        else if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ImportElement).DefaultAlias = token.Text;
+                            (curElement as JsImportElement).DefaultAlias = token.Text;
                             state = 17;
                         }
-                        else if (token.Type == TokenType.String)
+                        else if (token.Type == JsTokenType.String)
                         {
-                            (curElement as ImportElement).FromModule = token.Text;
+                            (curElement as JsImportElement).FromModule = token.Text;
                             yield return curElement;
                             curElement = null;
                             state = 0;
                         }
                         break;
                     case 11:
-                        if (token.Type == TokenType.Keyword && token.Text == "as")
+                        if (token.Type == JsTokenType.Keyword && token.Text == "as")
                             state = 14;
                         else
                             InvalidSyntax();
@@ -350,9 +475,9 @@ namespace JsPack.Core
                     case 12:
                         if (token.Text[0] == '}')
                             state = 15;
-                        else if (token.Type == TokenType.Identifier)
+                        else if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ImportElement).Items.Add(new IdentifierAlias()
+                            (curElement as JsImportElement).Items.Add(new JsIdentifierAlias()
                             {
                                 Identifier = token.Text
                             });
@@ -360,7 +485,7 @@ namespace JsPack.Core
                         }
                         break;
                     case 13:
-                        if (token.Type == TokenType.Keyword)
+                        if (token.Type == JsTokenType.Keyword)
                         {
                             if (token.Text == "as")
                                 state = 18;
@@ -378,17 +503,17 @@ namespace JsPack.Core
                         }
                         break;
                     case 14:
-                        (curElement as ImportElement).AllAlias = token.Text;
+                        (curElement as JsImportElement).AllAlias = token.Text;
                         state = 15;
                         break;
                     case 15:
-                        if (token.Type == TokenType.Keyword && token.Text == "from")
+                        if (token.Type == JsTokenType.Keyword && token.Text == "from")
                             state = 16;
                         else
                             InvalidSyntax();
                         break;
                     case 16:
-                        (curElement as ImportElement).FromModule = token.Text;
+                        (curElement as JsImportElement).FromModule = token.Text;
                         yield return curElement;
                         curElement = null;
                         state = 0;
@@ -396,13 +521,13 @@ namespace JsPack.Core
                     case 17:
                         if (token.Text == ",")
                             state = 10;
-                        else if (token.Type == TokenType.Keyword && token.Text == "from")
+                        else if (token.Type == JsTokenType.Keyword && token.Text == "from")
                             state = 16;
                         break;
                     case 18:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ImportElement).Items.Last().Alias = token.Text;
+                            (curElement as JsImportElement).Items.Last().Alias = token.Text;
                             state = 13;
                         }
                         else
@@ -415,16 +540,16 @@ namespace JsPack.Core
                             curElement = null;
                             state = 0;
                         }
-                        else if (token.Text == "{" && (curElement as ExportElement).ExportType == "const")
+                        else if (token.Text == "{" && (curElement as JsExportElement).ExportType == "const")
                         {
-                            if ((curElement as ExportElement).Items.Count > 0)
+                            if ((curElement as JsExportElement).Items.Count > 0)
                                 InvalidSyntax();
                             else
                                 state = 22;
                         }
-                        else if (token.Type == TokenType.Identifier)
+                        else if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).Items.Add(new IdentifierAlias() { Identifier = token.Text });
+                            (curElement as JsExportElement).Items.Add(new JsIdentifierAlias() { Identifier = token.Text });
                             state = 27;
                         }
                         break;
@@ -437,9 +562,9 @@ namespace JsPack.Core
                             InvalidSyntax();
                         break;
                     case 22:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).Items.Add(new IdentifierAlias() { Identifier = token.Text });
+                            (curElement as JsExportElement).Items.Add(new JsIdentifierAlias() { Identifier = token.Text });
                             state = 24;
                         }
                         else
@@ -465,9 +590,9 @@ namespace JsPack.Core
                         }
                         break;
                     case 25:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).Items.Last().Alias = token.Text;
+                            (curElement as JsExportElement).Items.Last().Alias = token.Text;
                             state = 21;
                         }
                         else
@@ -475,9 +600,9 @@ namespace JsPack.Core
 
                         break;
                     case 26:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).ExportName = token.Text;
+                            (curElement as JsExportElement).ExportName = token.Text;
                             yield return curElement;
                             curElement = null;
                             state = 0;
@@ -486,19 +611,19 @@ namespace JsPack.Core
                             InvalidSyntax();
                         break;
                     case 27:
-                        if (token.Text == ";")
+                        if (token.Text == ";" || token.Text == "=")
                         {
-                            if ((curElement as ExportElement).Items.Count == 1)
+                            if ((curElement as JsExportElement).Items.Count == 1)
                             {
-                                (curElement as ExportElement).ExportName = (curElement as ExportElement).Items[0].Identifier;
-                                (curElement as ExportElement).Items.Clear();                            
+                                (curElement as JsExportElement).ExportName = (curElement as JsExportElement).Items[0].Identifier;
+                                (curElement as JsExportElement).Items.Clear();                            
                             }
                             yield return curElement;
                             curElement = null;
                             state = 0;
                         }
-                        else if (token.Type == TokenType.Identifier)
-                            (curElement as ExportElement).Items.Add(new IdentifierAlias() { Identifier = token.Text });
+                        else if (token.Type == JsTokenType.Identifier)
+                            (curElement as JsExportElement).Items.Add(new JsIdentifierAlias() { Identifier = token.Text });
 
                         break;
                     case 30:
@@ -513,9 +638,9 @@ namespace JsPack.Core
                         }
                         break;
                     case 31:
-                        if (token.Type == TokenType.Identifier || (token.Type == TokenType.Keyword && (curElement as IdentifierElement).Parts.Count > 0))
+                        if (token.Type == JsTokenType.Identifier || (token.Type == JsTokenType.Keyword && (curElement as JsIdentifierExpression).Parts.Count > 0))
                         {
-                            (curElement as IdentifierElement).Parts.Add(token.Text);
+                            (curElement as JsIdentifierExpression).Parts.Add(token.Text);
                             state = 30;
                         }
                         else
@@ -531,22 +656,22 @@ namespace JsPack.Core
                             InvalidSyntax();
                         break;
                     case 36:
-                        if (token.Type == TokenType.Identifier)
-                            (curElement as ExportElement).ExportName = token.Text;
+                        if (token.Type == JsTokenType.Identifier)
+                            (curElement as JsExportElement).ExportName = token.Text;
                         yield return curElement;
                         curElement = null;
                         state = 0;
                         break;
 
                     case 37:
-                        if (token.Type == TokenType.Identifier)
+                        if (token.Type == JsTokenType.Identifier)
                         {
-                            (curElement as ExportElement).Items.Add(new IdentifierAlias() { Identifier = token.Text });
+                            (curElement as JsExportElement).Items.Add(new JsIdentifierAlias() { Identifier = token.Text });
                             state = 38;
                         }
-                        else if (token.Type == TokenType.Keyword && token.Text == "default")
+                        else if (token.Type == JsTokenType.Keyword && token.Text == "default")
                         {
-                            (curElement as ExportElement).IsDefault = true;
+                            (curElement as JsExportElement).IsDefault = true;
                         }
                         else if (token.Text[0] == '}')
                             state = 39;
@@ -575,9 +700,9 @@ namespace JsPack.Core
                         }
                         break;
                     case 40:
-                        if (token.Type == TokenType.String)
+                        if (token.Type == JsTokenType.String)
                         {
-                            (curElement as ExportElement).FromModule = token.Text;
+                            (curElement as JsExportElement).FromModule = token.Text;
                             yield return curElement;
                             curElement = null;
                             state = 0;
@@ -587,11 +712,11 @@ namespace JsPack.Core
                         break;
 
                     case 41:
-                        if (token.Type == TokenType.Identifier)
-                            (curElement as ExportElement).ExportName = token.Text;
+                        if (token.Type == JsTokenType.Identifier)
+                            (curElement as JsExportElement).ExportName = token.Text;
                         else
                         {
-                            if (!(curElement as ExportElement).IsDefault)
+                            if (!(curElement as JsExportElement).IsDefault)
                                 InvalidSyntax();
                         }
                         yield return curElement;
@@ -599,17 +724,17 @@ namespace JsPack.Core
                         state = 0;
                         break;
                     case 42:
-                        if (token.Type == TokenType.Identifier || (token.Type == TokenType.Keyword && token.Text == "default"))
+                        if (token.Type == JsTokenType.Identifier || (token.Type == JsTokenType.Keyword && token.Text == "default"))
                         {
-                            (curElement as ExportElement).Items.Last().Alias = token.Text;
+                            (curElement as JsExportElement).Items.Last().Alias = token.Text;
                             state = 38;
                         }
                         else
                             InvalidSyntax();
                         break;
                     case 43:
-                        if (token.Type == TokenType.Identifier) {
-                            (curElement as ExportElement).ExportName = token.Text;
+                        if (token.Type == JsTokenType.Identifier) {
+                            (curElement as JsExportElement).ExportName = token.Text;
                             state = 39;
                         }
                         else
@@ -620,11 +745,11 @@ namespace JsPack.Core
 
         }
 
-        public IEnumerable<Token> Tokenize(TextReader reader)
+        public IEnumerable<JsToken> Tokenize(TextReader reader)
         {
             var state = 0;
             var curText = new StringBuilder();
-            Token curToken = null;
+            JsToken curToken = null;
             char c = '\0';
             bool advance = true;
             var line = 0;
@@ -633,9 +758,9 @@ namespace JsPack.Core
             var waitNewLine = false;
             int blockStack = 0;
 
-            var CreateToken = (TokenType type) =>
+            var CreateToken = (JsTokenType type) =>
             {
-                return new Token()
+                return new JsToken()
                 {
                     Type = type,
                     Position = ofs,
@@ -677,23 +802,23 @@ namespace JsPack.Core
                         if (c == '"')
                         {
                             state = 1;
-                            curToken = CreateToken(TokenType.String);
+                            curToken = CreateToken(JsTokenType.String);
                         }
                         else if (c == '\'')
                         {
                             state = 4;
-                            curToken = CreateToken(TokenType.String);
+                            curToken = CreateToken(JsTokenType.String);
                         }
                         else if (c == '`')
                         {
                             state = 14;
-                            curToken = CreateToken(TokenType.String);
+                            curToken = CreateToken(JsTokenType.String);
                         }
                         else if (char.IsWhiteSpace(c))
                         {
 
                             curText.Append(c);
-                            curToken = CreateToken(TokenType.Whitespace);
+                            curToken = CreateToken(JsTokenType.Whitespace);
                             state = 3;
 
                         }
@@ -701,25 +826,25 @@ namespace JsPack.Core
                         {
                             state = 6;
                             curText.Append(c);
-                            curToken = CreateToken(TokenType.Identifier);
+                            curToken = CreateToken(JsTokenType.Identifier);
                         }
                         else if (char.IsDigit(c))
                         {
                             state = 7;
                             curText.Append(c);
-                            curToken = CreateToken(TokenType.Number);
+                            curToken = CreateToken(JsTokenType.Number);
                         }
 
                         else if (c == '/')
                         {
                             state = 10;
-                            curToken = CreateToken(TokenType.Comment);
+                            curToken = CreateToken(JsTokenType.Comment);
                         }
                         else if (PUNTUACTORS.Contains(c))
                         {
                             state = 9;
                             curText.Append(c);
-                            curToken = CreateToken(TokenType.Puntuacator);
+                            curToken = CreateToken(JsTokenType.Puntuacator);
                         }
                         /*
                         else
@@ -782,7 +907,7 @@ namespace JsPack.Core
 
                             curToken.Text = curText.ToString();
                             if (KEYWORDS.Contains(curToken.Text))
-                                curToken.Type = TokenType.Keyword;
+                                curToken.Type = JsTokenType.Keyword;
 
                             yield return curToken;
                             curText.Clear();
@@ -840,7 +965,7 @@ namespace JsPack.Core
                             state = 12;
                         else
                         {
-                            curToken = CreateToken(TokenType.Puntuacator);
+                            curToken = CreateToken(JsTokenType.Puntuacator);
                             curToken.Text = "/";
                             yield return curToken;
                             curText.Clear();
@@ -934,6 +1059,6 @@ namespace JsPack.Core
         }
 
 
-        public IModuleResolver ModuleResolver { get; set; }
+        public IJsModuleResolver ModuleResolver { get; set; }
     }
 }

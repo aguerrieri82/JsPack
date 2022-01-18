@@ -1,6 +1,6 @@
 ﻿namespace JsPack.Core
 {
-    public class IdentifierAlias
+    public class JsIdentifierAlias
     {
         public string Identifier { get; set; }
 

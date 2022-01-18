@@ -1,6 +1,6 @@
 ﻿namespace JsPack.Core
 {
-    public class ImportElement : JsElement
+    public class JsImportElement : JsElement
     {
         public string FromModule { get; set; }
 
@@ -8,7 +8,7 @@
 
         public string DefaultAlias { get; set; }
 
-        public IList<IdentifierAlias> Items { get; set; }
+        public IList<JsIdentifierAlias> Items { get; set; }
 
         public override JsElementType Type => JsElementType.Import;
     }

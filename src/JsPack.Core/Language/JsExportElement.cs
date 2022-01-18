@@ -8,7 +8,7 @@
         Var,
         Let
     }
-    public class ExportElement : JsElement
+    public class JsExportElement : JsElement
     {
         public bool IsDefault { get; set; }
 
@@ -18,7 +18,7 @@
 
         public string ExportType { get; set; }
 
-        public IList<IdentifierAlias> Items { get; set; }
+        public IList<JsIdentifierAlias> Items { get; set; }
 
         public override JsElementType Type => JsElementType.Export;
 

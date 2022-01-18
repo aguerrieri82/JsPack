@@ -1,5 +1,6 @@
 ﻿namespace JsPack.Core
 {
+    [Flags]
     public enum JsParsedModuleFlags
     {
         Parsed = 0x0,
@@ -11,6 +12,8 @@
     public class JsParsedModule : JsModule
     {
         public IList<JsElement> Elements { get; set; }
+
+        public IList<JsReference> ModuleImports { get; set; }
 
         public IDictionary<string, JsReference> Imports { get; set; }
 

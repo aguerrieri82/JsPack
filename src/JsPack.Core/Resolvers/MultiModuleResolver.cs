@@ -6,18 +6,18 @@ using System.Threading.Tasks;
 
 namespace JsPack.Core.Services
 {
-    public class MultiModuleResolver : IModuleResolver
+    public class MultiModuleResolver : IJsModuleResolver
     {
         public MultiModuleResolver()
         {
-            Resolvers = new IModuleResolver[]
+            Resolvers = new IJsModuleResolver[]
             {
                 new LocalModuleResolver() { Priority = 0 },
                 new NodeModuleResolver() { Priority = 1 },
                 new TypeScriptModuleResolver() { Priority = 2 }
             };
         }
-        public JsModule Resolve(ModuleResolveContext context, string module)
+        public JsModule Resolve(JsModuleResolveContext context, string module)
         {
             if (Resolvers == null)
                 return null;
@@ -34,6 +34,6 @@ namespace JsPack.Core.Services
 
         public int Priority { get; set; }
 
-        public IList<IModuleResolver> Resolvers { get; set; }
+        public IList<IJsModuleResolver> Resolvers { get; set; }
     }
 }

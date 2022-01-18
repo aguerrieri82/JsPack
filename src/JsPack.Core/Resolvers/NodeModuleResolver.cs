@@ -25,7 +25,7 @@ namespace JsPack.Core
         }
 
 
-        public override JsModule Resolve(ModuleResolveContext context, string module)
+        public override JsModule Resolve(JsModuleResolveContext context, string module)
         {
             var projPackage = FindConfig(context.Root);
 

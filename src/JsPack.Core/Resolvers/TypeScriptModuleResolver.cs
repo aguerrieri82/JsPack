@@ -36,7 +36,7 @@ namespace JsPack.Core
         {
         }
 
-        public override JsModule Resolve(ModuleResolveContext context, string module)
+        public override JsModule Resolve(JsModuleResolveContext context, string module)
         {
             var config = FindConfig(context.Root);
             if (config == null)

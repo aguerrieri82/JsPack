@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace JsPack.Core
 {
-    internal class LocalModuleResolver : IModuleResolver
+    internal class LocalModuleResolver : IJsModuleResolver
     {
-        public JsModule Resolve(ModuleResolveContext context, string module)
+        public JsModule Resolve(JsModuleResolveContext context, string module)
         {
             if (!module.StartsWith("."))
                 return null;
@@ -19,8 +19,7 @@ namespace JsPack.Core
                 return null;
             return new JsModule()
             {
-                Path = Path.GetFullPath(entry),
-                Name = module,
+                Path = Path.GetFullPath(entry)
             };
         }
 

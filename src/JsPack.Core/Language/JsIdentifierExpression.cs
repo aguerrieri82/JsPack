@@ -1,6 +1,6 @@
 ﻿namespace JsPack.Core
 {
-    public class IdentifierElement : JsElement
+    public class JsIdentifierExpression : JsElement
     {
         public IList<string> Parts { get; set; }
 
