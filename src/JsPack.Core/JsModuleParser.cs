@@ -1,4 +1,5 @@
-﻿using System;
+﻿using JsPack.Core.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,23 +9,211 @@ namespace JsPack.Core
 {
     public class JsModuleParser
     {
-        const string PUNTUACTORS = "*/+=?%><!-[]{}();&|^.,:";
+        static readonly string PUNTUACTORS = "*/+=?%><!-[]{}();&|^.,:";
 
-        readonly string[] KEYWORDS = new[] { "as", "from", "abstract", "arguments", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "debugger", "default", "delete", "do", "double", "else", "enum", "eval", "export", "extends", "false", "final", "finally", "float", "for", "function", "goto", "if", "implements", "import", "in", "instanceof", "int", "interface", "let", "long", "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "typeof", "var", "void", "volatile", "while", "with", "yield" };
+        static readonly string[] KEYWORDS = new[] { "as", "from", "abstract", "arguments", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "debugger", "default", "delete", "do", "double", "else", "enum", "eval", "export", "extends", "false", "final", "finally", "float", "for", "function", "goto", "if", "implements", "import", "in", "instanceof", "int", "interface", "let", "long", "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "typeof", "var", "void", "volatile", "while", "with", "yield" };
 
+        Dictionary<string, JsParsedModule> _modules;
 
-        public IEnumerable<ParsedModule> ParseAll(string path, string filter = "*.js")
+        public JsModuleParser()
+        {
+            _modules = new Dictionary<string, JsParsedModule>();
+            ModuleResolver = new MultiModuleResolver();
+        }
+
+        public JsParsedModule Resolve(JsModule context, string module)
+        {
+            var resModule = ModuleResolver.Resolve(new ModuleResolveContext()
+            {
+                Root = Path.GetDirectoryName(context.Path)
+            }, module);
+
+            if (resModule == null)
+            {
+                Console.WriteLine("Module {0} not resolved", module);
+                return null;
+            }
+
+            if (_modules.TryGetValue(resModule.Path, out var parsedModule))
+            {
+                if (File.GetLastWriteTime(resModule.Path) < parsedModule.ParseTime)
+                    return parsedModule;
+            }
+
+            parsedModule = Parse(resModule.Path);
+  
+            return parsedModule;
+        }
+
+        public void Resolve(JsModule context, JsReference reference)
+        {
+            if (reference.ResolveStatus == JsReferenceStatus.NotResolved)
+                return;
+
+            reference.FromModule = Resolve(context, reference.FromModuleName);
+
+            if (reference.FromModule == null)
+                reference.ResolveStatus = JsReferenceStatus.Error;
+            else
+                reference.ResolveStatus = JsReferenceStatus.Success;
+        }
+
+        public void ResolveReferences(JsParsedModule module)
+        {
+            if ((module.Flags & JsParsedModuleFlags.Resolving) != 0)
+                return;
+
+            module.Flags |= JsParsedModuleFlags.Resolving;
+
+            if ((module.Flags & JsParsedModuleFlags.Imports) == 0)
+            {
+                module.Imports = new Dictionary<string, JsReference>();
+
+                foreach (var import in module.Elements.OfType<ImportElement>())
+                {
+                    foreach (var importRef in ResolveImport(module, import))
+                        module.Imports[importRef.Alias] = importRef;
+                }
+
+                module.Flags |= JsParsedModuleFlags.Imports;
+            }
+
+            if ((module.Flags & JsParsedModuleFlags.Exports) == 0)
+            {
+                module.Exports = new Dictionary<string, JsReference>();
+
+                foreach (var export in module.Elements.OfType<ExportElement>())
+                {
+                    foreach (var exportRef in ResolveExport(module, export))
+                        module.Exports[exportRef.Alias] = exportRef;
+                }
+
+                module.Flags |= JsParsedModuleFlags.Exports;
+
+            }
+
+            module.Flags ^= JsParsedModuleFlags.Resolving;
+        }
+
+        public IEnumerable<JsReference> ResolveImport(JsParsedModule module, ImportElement import)
+        {
+            var impModule = Resolve(module, import.FromModule);
+
+            if (impModule == null)
+                yield break;
+
+            ResolveReferences(impModule);
+
+            if (import.AllAlias != null)
+            {
+     
+            }
+        }
+
+        public IEnumerable<JsReference> ResolveExport(JsParsedModule module, ExportElement export)
+        {
+            if (export.FromModule != null)
+            {
+                var impModule = Resolve(module, export.FromModule);
+                if (impModule == null)
+                    yield break;
+
+                ResolveReferences(impModule);
+
+                if (export.Items == null || export.Items.Count == 0)
+                {
+                    if (export.ExportName != null)
+                    {
+                        yield return new JsReference()
+                        {
+                            FromModule = impModule,
+                            FromModuleName = impModule.Name,
+                            Alias = export.ExportName,
+                            Name = "*",
+                            ResolveStatus = JsReferenceStatus.Success
+                        };
+                    }
+                    else
+                    {
+                        foreach (var item in impModule.Exports)
+                            yield return item.Value;
+                    }
+                }
+                else
+                {
+                    foreach (var item in export.Items)
+                    {
+                        var isFound = impModule.Exports.TryGetValue(item.Identifier, out var exportRef);
+                        yield return new JsReference()
+                        {
+                            FromModule = impModule,
+                            FromModuleName = impModule.Name,
+                            Alias = item.Alias ?? item.Identifier,
+                            Name = item.Identifier,
+                            ResolveStatus = isFound ? JsReferenceStatus.Success : JsReferenceStatus.Error
+                        };
+
+                        if (!isFound)
+                            Console.WriteLine("Re-export reference {0} from module {1} not found", item.Identifier, impModule.Name);
+                    }
+                }
+            }
+            else
+            {
+                if (export.Items != null)
+                {
+                    foreach (var item in export.Items)
+                    {
+                        yield return new JsReference()
+                        {
+                            FromModule = module,
+                            FromModuleName = module.Name,
+                            Alias = item.Alias ?? item.Identifier,
+                            Name = item.Identifier,
+                            ResolveStatus = JsReferenceStatus.Success
+                        };
+                    }
+                }
+                if (export.ExportName != null || export.IsDefault) {
+                    yield return new JsReference()
+                    {
+                        FromModule = module,
+                        FromModuleName = module.Name,
+                        Alias = export.IsDefault ? "default" : export.ExportName,
+                        Name = export.ExportName,
+                        ResolveStatus = JsReferenceStatus.Success
+                    };
+                }
+            }
+        }
+
+        public JsParsedModule Parse(string path, bool resolveRefs = false)
+        {
+            path = Path.GetFullPath(path);
+
+            using var reader = new StreamReader(path);
+
+            var result = new JsParsedModule()
+            {
+                Name = Path.GetFileNameWithoutExtension(path),
+                Path = path,
+                Elements = Parse(Tokenize(reader)).ToArray(),
+                ParseTime = DateTime.Now,
+                Flags= JsParsedModuleFlags.Parsed
+            };
+
+            _modules[path] = result;
+
+            if (resolveRefs)
+                ResolveReferences(result);
+
+            return result;
+        }
+
+        public IEnumerable<JsParsedModule> ParseAll(string path, string filter = "*.js")
         {
             foreach (var file in Directory.GetFiles(path, filter))
-            {
-                using var reader = new  StreamReader(file);
-
-                yield return new ParsedModule()
-                {
-                    Path = filter,
-                    Elements = Parse(Tokenize(reader)).ToArray()
-                };
-            }
+                yield return Parse(file);
 
             foreach (var file in Directory.GetDirectories(path))
             {
@@ -32,7 +221,6 @@ namespace JsPack.Core
                     yield return item;
             }
         }
-
 
         public IEnumerable<JsElement> Parse(IEnumerable<Token> tokens, Action<InvalidSyntaxException> errorHandler = null)
         {
@@ -300,6 +488,11 @@ namespace JsPack.Core
                     case 27:
                         if (token.Text == ";")
                         {
+                            if ((curElement as ExportElement).Items.Count == 1)
+                            {
+                                (curElement as ExportElement).ExportName = (curElement as ExportElement).Items[0].Identifier;
+                                (curElement as ExportElement).Items.Clear();                            
+                            }
                             yield return curElement;
                             curElement = null;
                             state = 0;
@@ -438,6 +631,7 @@ namespace JsPack.Core
             var lineOfs = 0;
             var ofs = -1;
             var waitNewLine = false;
+            int blockStack = 0;
 
             var CreateToken = (TokenType type) =>
             {
@@ -480,12 +674,21 @@ namespace JsPack.Core
                 switch (state)
                 {
                     case 0:
-                        if (c == '"' || c == '\'')
+                        if (c == '"')
                         {
-                            state = c == '"' ? 1 : 4;
+                            state = 1;
                             curToken = CreateToken(TokenType.String);
                         }
-
+                        else if (c == '\'')
+                        {
+                            state = 4;
+                            curToken = CreateToken(TokenType.String);
+                        }
+                        else if (c == '`')
+                        {
+                            state = 14;
+                            curToken = CreateToken(TokenType.String);
+                        }
                         else if (char.IsWhiteSpace(c))
                         {
 
@@ -680,11 +883,57 @@ namespace JsPack.Core
                             state = 12;
                         }
                         break;
+                    case 14:
+                        if (c == '\\')
+                            state = 15;
+                        else if (c == '$')
+                            state = 16;
+                        else if (c == '`')
+                        {
+                            curToken.Text = curText.ToString();
+                            yield return curToken;
+                            curText.Clear();
+                            curToken = null;
+                            state = 0;
+                        }
+                        else
+                            curText.Append(c);
+                        break;
+                    case 15:
+                        curText.Append(c);
+                        state = 14;
+                        break;
+                    case 16:
+                        if (c == '{')
+                        {
+                            blockStack = 1;
+                            state = 17;
+                        }
+                        else
+                        {
+                            curText.Append("$");
+                            state = 14;
+                            advance = false;
+                        }
+                        break;
+                    case 17:
+                        if (c == '}')
+                        {
+                            blockStack--;
+                            if (blockStack == 0)
+                                state = 14;
+                        }
+                        else if (c == '{')
+                            blockStack++;
 
-
-
+                        curText.Append(c);
+                        
+                        break;
                 }
             }
         }
+
+
+        public IModuleResolver ModuleResolver { get; set; }
     }
 }
