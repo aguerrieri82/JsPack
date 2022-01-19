@@ -72,7 +72,6 @@ namespace JsPack
                 if (expDeps != null)
                     ExportDependance(Path.GetDirectoryName(mainPath), expDeps, writer);
             }
-
         }
     }
 }

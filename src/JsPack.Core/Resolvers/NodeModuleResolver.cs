@@ -24,7 +24,6 @@ namespace JsPack
         {
         }
 
-
         public override JsModule Resolve(JsModuleResolveContext context, string module)
         {
             var projPackage = FindConfig(context.Root);

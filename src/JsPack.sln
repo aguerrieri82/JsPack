@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.1.32104.313
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JsPack.App", "JsPack.App\JsPack.App.csproj", "{97D9BABE-6E20-498F-A0C5-CC21CB2AFCC7}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JsPack.App", "JsPack.App\JsPack.App.csproj", "{97D9BABE-6E20-498F-A0C5-CC21CB2AFCC7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JsPack.Core", "JsPack.Core\JsPack.Core.csproj", "{535156FF-7667-4EF3-ADBC-AEEBBB6D5724}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JsPack.Core", "JsPack.Core\JsPack.Core.csproj", "{535156FF-7667-4EF3-ADBC-AEEBBB6D5724}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JsPack.Explore", "JsPack.Explore\JsPack.Explore.csproj", "{F31F26F2-14AE-4891-9002-359BB6CA2142}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{535156FF-7667-4EF3-ADBC-AEEBBB6D5724}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{535156FF-7667-4EF3-ADBC-AEEBBB6D5724}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{535156FF-7667-4EF3-ADBC-AEEBBB6D5724}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F31F26F2-14AE-4891-9002-359BB6CA2142}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F31F26F2-14AE-4891-9002-359BB6CA2142}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F31F26F2-14AE-4891-9002-359BB6CA2142}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F31F26F2-14AE-4891-9002-359BB6CA2142}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

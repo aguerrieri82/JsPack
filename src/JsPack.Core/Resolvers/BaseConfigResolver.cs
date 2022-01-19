@@ -23,7 +23,6 @@ namespace JsPack
         IDictionary<string, ConfigRef<TConfig>> _pathCache;
         List<ConfigRef<TConfig>> _configList;
 
-
         public BaseConfigResolver(string fileName)
         {
             _fileName = fileName;
@@ -31,7 +30,7 @@ namespace JsPack
             _configList = new List<ConfigRef<TConfig>>();
         }
 
-        public ConfigRef<TConfig> FindConfig(string basePath)
+        protected ConfigRef<TConfig> FindConfig(string basePath)
         {
             basePath = Path.GetFullPath(basePath);
 
