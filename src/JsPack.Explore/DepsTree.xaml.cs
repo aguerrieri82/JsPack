@@ -23,7 +23,12 @@ namespace JsPack.Explore
         public DepsTree()
         {
             InitializeComponent();
-            DataContext = new DepsTreeViewModel();
+
+            var treeTable = new TreeTableView();
+            var deps = new DepsNode();
+            deps.Load(@"D:\Development\Personal\Git\DataLab\src\DataLab.Web\obj\js\DataLab\src\DataLab.Web\Scripts\index.js");
+            treeTable.Load(deps);
+            DataContext = treeTable;
         }
     }
 }

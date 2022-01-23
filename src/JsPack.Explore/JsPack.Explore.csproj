@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FontAwesome5" Version="2.1.6" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\JsPack.Core\JsPack.Core.csproj" />
   </ItemGroup>
 
